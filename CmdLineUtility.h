@@ -1,6 +1,6 @@
 #pragma once
 
-namespace Data
+namespace CLU
 {
 	typedef void* ProcessID;
 

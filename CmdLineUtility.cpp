@@ -5,11 +5,11 @@
 #include <Windows.h>
 #include <shellapi.h>
 
-static std::set<Data::ProcessID> s_processList;
+static std::set<CLU::ProcessID> s_processList;
 
-static void SetProcessPriority(HANDLE _process, Data::ProcessPriority _priority)
+static void SetProcessPriority(HANDLE _process, CLU::ProcessPriority _priority)
 {
-	using namespace Data;
+	using namespace CLU;
 
 	switch ( _priority )
 	{
@@ -35,7 +35,7 @@ static void SetProcessPriority(HANDLE _process, Data::ProcessPriority _priority)
 	}
 }
 
-bool Data::ASyncExecute(const char* _cmd, const char* _workingDir /*= nullptr*/, ProcessPriority _prio /*= NORMAL*/)
+bool CLU::ASyncExecute(const char* _cmd, const char* _workingDir /*= nullptr*/, ProcessPriority _prio /*= NORMAL*/)
 {
 	std::string cmd = "/C "; cmd += _cmd;
 	
@@ -61,7 +61,7 @@ bool Data::ASyncExecute(const char* _cmd, const char* _workingDir /*= nullptr*/,
 	return false;
 }
 
-Data::ProcessID Data::PermanentExecute(const char* _cmd, const char* _workingDir /* = nullptr*/, ProcessPriority _prio /*= NORMAL*/)
+CLU::ProcessID CLU::PermanentExecute(const char* _cmd, const char* _workingDir /* = nullptr*/, ProcessPriority _prio /*= NORMAL*/)
 {
 	std::string cmd = "/C "; cmd += _cmd;
 
@@ -89,7 +89,7 @@ Data::ProcessID Data::PermanentExecute(const char* _cmd, const char* _workingDir
 	return nullptr;
 }
 
-bool Data::SyncExecute(const char* _cmd, const char* _workingDir /*= nullptr*/, ProcessPriority _prio /*= NORMAL*/)
+bool CLU::SyncExecute(const char* _cmd, const char* _workingDir /*= nullptr*/, ProcessPriority _prio /*= NORMAL*/)
 {
 	bool status = false;
 	
@@ -127,7 +127,7 @@ bool Data::SyncExecute(const char* _cmd, const char* _workingDir /*= nullptr*/, 
 	return status;
 }
 
-bool Data::KillPermanent(Data::ProcessID _p)
+bool CLU::KillPermanent(CLU::ProcessID _p)
 {
 	SHELLEXECUTEINFOA* shellExInfo = static_cast<SHELLEXECUTEINFOA*>( _p );
 	if ( TerminateProcess(shellExInfo->hProcess, 1) )
@@ -141,7 +141,7 @@ bool Data::KillPermanent(Data::ProcessID _p)
 	return false;
 }
 
-unsigned int Data::GetLastError(char* _message, size_t _size)
+unsigned int CLU::GetLastError(char* _message, size_t _size)
 {
 	DWORD error = ::GetLastError();
 	if ( _message != nullptr )
