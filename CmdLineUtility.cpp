@@ -35,24 +35,33 @@ static void SetProcessPriority(HANDLE _process, CLU::ProcessPriority _priority)
 	}
 }
 
-bool CLU::ASyncExecute(const char* _cmd, const char* _workingDir /*= nullptr*/, ProcessPriority _prio /*= NORMAL*/)
+static void SetShellCmd(std::string* _resultCmd, const char* _cmd)
 {
-	std::string cmd = "/C "; cmd += _cmd;
+	*_resultCmd = "/S /C "; *_resultCmd += "\""; *_resultCmd += _cmd; *_resultCmd += "\"";
+}
+
+static void InitShellExStruct(SHELLEXECUTEINFOA* _shellExInfo, unsigned int _mask, const char* _cmd, const char* _workingDir, bool _hideWindow)
+{
+	_shellExInfo->cbSize        = sizeof(SHELLEXECUTEINFO);
+	_shellExInfo->fMask         = _mask;
+	_shellExInfo->hwnd          = NULL;
+	_shellExInfo->lpVerb        = "open";
+	_shellExInfo->lpFile        = "cmd";
+	_shellExInfo->lpParameters  = _cmd;
+	_shellExInfo->lpDirectory   = _workingDir;
+	_shellExInfo->nShow         = (_hideWindow) ? SW_HIDE : SW_SHOWNORMAL;
+	_shellExInfo->hInstApp      = NULL;
+}
+
+bool CLU::ASyncExecute(const char* _cmd, const char* _workingDir /*= nullptr*/, bool _hideWindow /*= true*/, ProcessPriority _prio /*= NORMAL*/)
+{
+	std::string cmd;
+	SetShellCmd( &cmd, _cmd );
 	
 	SHELLEXECUTEINFOA shellExInfo;
+	InitShellExStruct( &shellExInfo, SEE_MASK_DEFAULT, cmd.c_str(), _workingDir, _hideWindow);
 
-	shellExInfo.cbSize        = sizeof(SHELLEXECUTEINFO);
-	shellExInfo.fMask         = SEE_MASK_DEFAULT;
-	shellExInfo.hwnd          = NULL;
-	shellExInfo.lpVerb        = "open";
-	shellExInfo.lpFile        = "cmd";
-	shellExInfo.lpParameters  = cmd.c_str();
-	shellExInfo.lpDirectory   = _workingDir;
-	shellExInfo.nShow         = SW_HIDE;
-	shellExInfo.hInstApp      = NULL;
-
-	// >= 32 implies success, there's no maccro for this value in microsoft's doc...
-	if ( ShellExecuteExA(&shellExInfo) >= 32 )
+	if ( ShellExecuteExA(&shellExInfo) == TRUE )
 	{
 		SetProcessPriority( shellExInfo.hProcess, _prio );
 		return true;
@@ -61,26 +70,16 @@ bool CLU::ASyncExecute(const char* _cmd, const char* _workingDir /*= nullptr*/, 
 	return false;
 }
 
-CLU::ProcessID CLU::PermanentExecute(const char* _cmd, const char* _workingDir /* = nullptr*/, ProcessPriority _prio /*= NORMAL*/)
+CLU::ProcessID CLU::PermanentExecute(const char* _cmd, const char* _workingDir /* = nullptr*/, bool _hideWindow /*= true*/, ProcessPriority _prio /*= NORMAL*/)
 {
-	std::string cmd = "/C "; cmd += _cmd;
+	std::string cmd;
+	SetShellCmd( &cmd, _cmd );
 
 	SHELLEXECUTEINFOA* shellExInfo = new SHELLEXECUTEINFOA;
-
-	shellExInfo->cbSize        = sizeof(SHELLEXECUTEINFO);
-	shellExInfo->fMask         = SEE_MASK_NOCLOSEPROCESS;
-	shellExInfo->hwnd          = NULL;
-	shellExInfo->lpVerb        = "open";
-	shellExInfo->lpFile        = "cmd";
-	shellExInfo->lpParameters  = cmd.c_str();
-	shellExInfo->lpDirectory   = _workingDir;
-	shellExInfo->nShow         = SW_HIDE;
-	shellExInfo->hInstApp      = NULL;
-	
+	InitShellExStruct( shellExInfo, SEE_MASK_NOCLOSEPROCESS, cmd.c_str(), _workingDir, _hideWindow );
 	s_processList.insert(shellExInfo);
 
-	// >= 32 implies success, there's no maccro for this value in microsoft's doc...
-	if ( ShellExecuteExA(shellExInfo) >= 32 )
+	if ( ShellExecuteExA(shellExInfo) == TRUE )
 	{
 		SetProcessPriority( shellExInfo->hProcess, _prio );
 		return shellExInfo;
@@ -89,23 +88,15 @@ CLU::ProcessID CLU::PermanentExecute(const char* _cmd, const char* _workingDir /
 	return nullptr;
 }
 
-bool CLU::SyncExecute(const char* _cmd, const char* _workingDir /*= nullptr*/, ProcessPriority _prio /*= NORMAL*/)
+bool CLU::SyncExecute(const char* _cmd, const char* _workingDir /*= nullptr*/, bool _hideWindow /*= true*/, ProcessPriority _prio /*= NORMAL*/)
 {
 	bool status = false;
 	
-	std::string cmd = "/C "; cmd += _cmd;
+	std::string cmd;
+	SetShellCmd( &cmd, _cmd );
 
 	SHELLEXECUTEINFOA shellExInfo;
-
-	shellExInfo.cbSize        = sizeof(SHELLEXECUTEINFO);
-	shellExInfo.fMask         = SEE_MASK_NOCLOSEPROCESS;
-	shellExInfo.hwnd          = NULL;
-	shellExInfo.lpVerb        = "open";
-	shellExInfo.lpFile        = "cmd";
-	shellExInfo.lpParameters  = cmd.c_str();
-	shellExInfo.lpDirectory   = _workingDir;
-	shellExInfo.nShow         = SW_HIDE;
-	shellExInfo.hInstApp      = NULL;
+	InitShellExStruct( &shellExInfo, SEE_MASK_NOCLOSEPROCESS, cmd.c_str(), _workingDir, _hideWindow );
 
 	if ( ShellExecuteExA(&shellExInfo) == TRUE )
 	{
