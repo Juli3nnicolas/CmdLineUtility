@@ -37,82 +37,127 @@ static void SetProcessPriority(HANDLE _process, CLU::ProcessPriority _priority)
 
 static void SetShellCmd(std::string* _resultCmd, const char* _cmd)
 {
-	*_resultCmd = "/S /C "; *_resultCmd += "\""; *_resultCmd += _cmd; *_resultCmd += "\"";
+	*_resultCmd = "cmd /S /C "; *_resultCmd += "\""; *_resultCmd += _cmd; *_resultCmd += "\"";
 }
 
-static void InitShellExStruct(SHELLEXECUTEINFOA* _shellExInfo, unsigned int _mask, const char* _cmd, const char* _workingDir, bool _hideWindow)
+static bool Execute(const char* _cmd, const char* _workingDir, PROCESS_INFORMATION* _outInfo, CLU::OutputBuffer* _cmdOutputBuf)
 {
-	_shellExInfo->cbSize        = sizeof(SHELLEXECUTEINFO);
-	_shellExInfo->fMask         = _mask;
-	_shellExInfo->hwnd          = NULL;
-	_shellExInfo->lpVerb        = "open";
-	_shellExInfo->lpFile        = "cmd";
-	_shellExInfo->lpParameters  = _cmd;
-	_shellExInfo->lpDirectory   = _workingDir;
-	_shellExInfo->nShow         = (_hideWindow) ? SW_HIDE : SW_SHOWNORMAL;
-	_shellExInfo->hInstApp      = NULL;
+	// Get the process' info (useful in case it is to be launched asynchronously)
+	if ( _outInfo == nullptr )
+		return false;
+
+	// Initialize the STARTUPINFO struct
+	STARTUPINFOA sinfo;
+	ZeroMemory(&sinfo, sizeof(STARTUPINFOA));
+	sinfo.cb = sizeof(STARTUPINFOA);
+	sinfo.dwFlags = STARTF_USESTDHANDLES;
+	sinfo.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+	sinfo.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
+
+	// Get a pipe from which we read output from the launched app
+	HANDLE readfh;
+	if ( _cmdOutputBuf != nullptr )
+	{
+		// Initialize security attributes to allow the launched app to
+		// inherit the caller's STDOUT, STDIN, and STDERR
+		SECURITY_ATTRIBUTES sattr;
+		sattr.nLength = sizeof(SECURITY_ATTRIBUTES);
+		sattr.lpSecurityDescriptor = 0;
+		sattr.bInheritHandle = TRUE;
+
+		if (!CreatePipe(&readfh, &sinfo.hStdOutput, &sattr, 0))
+		{
+			// Error opening the pipe
+			return false;
+		}
+
+		// Set pipe's read-end handle (to read commands output)
+		_cmdOutputBuf->SetHandle( (CLU::OutputBuffer::Handle) readfh );
+	}
+
+	// Launch the app. We should return immediately (while the app is running)
+	if (!CreateProcessA(0, const_cast<char*>(_cmd), 0, 0, TRUE, 0, 0, _workingDir, &sinfo, _outInfo))
+	{
+		if ( _cmdOutputBuf != nullptr )
+		{
+			CloseHandle(readfh);
+			CloseHandle(sinfo.hStdOutput);
+		}
+
+		return false;
+	}
+
+	// We close the pipe's writing end (since we won't write anything) 
+	if ( _cmdOutputBuf != nullptr )
+		CloseHandle(sinfo.hStdOutput);
+
+	return true;
 }
 
-bool CLU::ASyncExecute(const char* _cmd, const char* _workingDir /*= nullptr*/, bool _hideWindow /*= true*/, ProcessPriority _prio /*= NORMAL*/)
+bool CLU::ASyncExecute(const char* _cmd, const char* _workingDir /*= nullptr*/, std::string* _cmdOutputBuf /*= nullptr*/, ProcessPriority _prio /*= NORMAL*/)
 {
 	std::string cmd;
 	SetShellCmd( &cmd, _cmd );
 	
-	SHELLEXECUTEINFOA shellExInfo;
-	InitShellExStruct( &shellExInfo, SEE_MASK_DEFAULT, cmd.c_str(), _workingDir, _hideWindow);
-
-	if ( ShellExecuteExA(&shellExInfo) == TRUE )
+	PROCESS_INFORMATION pinfo;
+	if ( Execute( cmd.c_str(), _workingDir, &pinfo, nullptr ) ) // !!!!!!!!!!!!
 	{
-		SetProcessPriority( shellExInfo.hProcess, _prio );
+		SetProcessPriority( pinfo.hProcess, _prio );
 		return true;
 	}
 
 	return false;
 }
 
-CLU::ProcessID CLU::PermanentExecute(const char* _cmd, const char* _workingDir /* = nullptr*/, bool _hideWindow /*= true*/, ProcessPriority _prio /*= NORMAL*/)
+CLU::ProcessID CLU::PermanentExecute(const char* _cmd, const char* _workingDir /* = nullptr*/, std::string* _cmdOutputBuf /*= nullptr*/, ProcessPriority _prio /*= NORMAL*/)
 {
 	std::string cmd;
 	SetShellCmd( &cmd, _cmd );
 
-	SHELLEXECUTEINFOA* shellExInfo = new SHELLEXECUTEINFOA;
-	InitShellExStruct( shellExInfo, SEE_MASK_NOCLOSEPROCESS, cmd.c_str(), _workingDir, _hideWindow );
-	s_processList.insert(shellExInfo);
+	PROCESS_INFORMATION* pinfo = new PROCESS_INFORMATION;
+	s_processList.insert(pinfo);
 
-	if ( ShellExecuteExA(shellExInfo) == TRUE )
+	if ( Execute( cmd.c_str(), _workingDir, pinfo, nullptr ) ) // !!!!!!!!!!!!!
 	{
-		SetProcessPriority( shellExInfo->hProcess, _prio );
-		return shellExInfo;
+		SetProcessPriority( pinfo->hProcess, _prio );
+		return pinfo;
 	}
 
 	return nullptr;
 }
 
-bool CLU::SyncExecute(const char* _cmd, const char* _workingDir /*= nullptr*/, bool _hideWindow /*= true*/, ProcessPriority _prio /*= NORMAL*/)
+bool CLU::SyncExecute(const char* _cmd, const char* _workingDir /*= nullptr*/, std::string* _cmdOutputBuf /*= nullptr*/, ProcessPriority _prio /*= NORMAL*/)
 {
 	bool status = false;
 	
 	std::string cmd;
 	SetShellCmd( &cmd, _cmd );
 
-	SHELLEXECUTEINFOA shellExInfo;
-	InitShellExStruct( &shellExInfo, SEE_MASK_NOCLOSEPROCESS, cmd.c_str(), _workingDir, _hideWindow );
-
-	if ( ShellExecuteExA(&shellExInfo) == TRUE )
+	OutputBuffer buffer; // Must remain until the command line output has fully been read
+	PROCESS_INFORMATION pinfo;
+	status = Execute( cmd.c_str(), _workingDir, &pinfo, (_cmdOutputBuf != nullptr) ? &buffer : nullptr );
+	if ( status )
 	{
-		SetProcessPriority( shellExInfo.hProcess, _prio );
+		SetProcessPriority( pinfo.hProcess, _prio );
 
 		// Wait for process to terminate
-		DWORD waiting_over = ::WaitForSingleObject( shellExInfo.hProcess, INFINITE );
+		DWORD waiting_over = ::WaitForSingleObject( pinfo.hProcess, INFINITE );
 		
 		if ( waiting_over == WAIT_OBJECT_0 )
 		{
-			if ( ::GetExitCodeProcess( shellExInfo.hProcess, &waiting_over ) )
+			if ( ::GetExitCodeProcess( pinfo.hProcess, &waiting_over ) )
 				status = true;
 		}
 
 		// Destruct process handle
-		CloseHandle(shellExInfo.hProcess);
+		CloseHandle(pinfo.hProcess);
+	}
+
+	// Fill output buffer with command's messages
+	if ( _cmdOutputBuf != nullptr )
+	{
+		status = buffer.Fill();
+		*_cmdOutputBuf = buffer.Get();
 	}
 
 	return status;
@@ -120,11 +165,11 @@ bool CLU::SyncExecute(const char* _cmd, const char* _workingDir /*= nullptr*/, b
 
 bool CLU::KillPermanent(CLU::ProcessID _p)
 {
-	SHELLEXECUTEINFOA* shellExInfo = static_cast<SHELLEXECUTEINFOA*>( _p );
-	if ( TerminateProcess(shellExInfo->hProcess, 1) )
+	PROCESS_INFORMATION* pinfo = static_cast<PROCESS_INFORMATION*>( _p );
+	if ( TerminateProcess(pinfo->hProcess, 1) )
 	{
 		s_processList.erase( _p );
-		CloseHandle(shellExInfo->hProcess);
+		CloseHandle(pinfo->hProcess);
 		delete _p;
 		return true;
 	}
@@ -147,4 +192,46 @@ unsigned int CLU::GetLastError(char* _message, size_t _size)
 	}
 
 	return error;
+}
+
+bool CLU::OutputBuffer::ReleaseResources()
+{
+	bool status = true;
+
+	if ( m_handle != INVALID_HANDLE )
+	{
+		status = CloseHandle( (HANDLE) m_handle ) == TRUE ? true : false;
+		m_handle = INVALID_HANDLE;
+	}
+
+	return status;
+}
+
+bool CLU::OutputBuffer::Fill()
+{
+	if ( m_handle == INVALID_HANDLE )
+		return false;
+
+	const size_t BUFFER_SIZE = 100;
+	char buffer[BUFFER_SIZE] = "";
+
+	// while still possible to read
+	DWORD bytes_read = 0;
+	do
+	{
+		if (!ReadFile( (HANDLE) m_handle, buffer, BUFFER_SIZE-1, &bytes_read, 0) || bytes_read == 0 )
+		{
+			// If we aborted for any reason other than that the
+			// app has closed that pipe, it's an
+			// error. Otherwise, the program has finished its
+			// output apparently
+			if (::GetLastError() != ERROR_BROKEN_PIPE && bytes_read)
+				return false;
+		}
+
+		buffer[bytes_read] = '\0';
+		m_buffer += buffer;
+	} while ( bytes_read != 0 );
+
+	return true;
 }
