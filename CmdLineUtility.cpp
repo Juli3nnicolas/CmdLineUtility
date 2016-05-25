@@ -94,13 +94,13 @@ static bool Execute(const char* _cmd, const char* _workingDir, PROCESS_INFORMATI
 	return true;
 }
 
-bool CLU::ASyncExecute(const char* _cmd, const char* _workingDir /*= nullptr*/, std::string* _cmdOutputBuf /*= nullptr*/, ProcessPriority _prio /*= NORMAL*/)
+bool CLU::ASyncExecute(const char* _cmd, const char* _workingDir /*= nullptr*/, CLU::OutputBuffer* _cmdOutputBuf /*= nullptr*/, ProcessPriority _prio /*= NORMAL*/)
 {
 	std::string cmd;
 	SetShellCmd( &cmd, _cmd );
 	
 	PROCESS_INFORMATION pinfo;
-	if ( Execute( cmd.c_str(), _workingDir, &pinfo, nullptr ) ) // !!!!!!!!!!!!
+	if ( Execute( cmd.c_str(), _workingDir, &pinfo, _cmdOutputBuf ) )
 	{
 		SetProcessPriority( pinfo.hProcess, _prio );
 		return true;
@@ -109,7 +109,7 @@ bool CLU::ASyncExecute(const char* _cmd, const char* _workingDir /*= nullptr*/, 
 	return false;
 }
 
-CLU::ProcessID CLU::PermanentExecute(const char* _cmd, const char* _workingDir /* = nullptr*/, std::string* _cmdOutputBuf /*= nullptr*/, ProcessPriority _prio /*= NORMAL*/)
+CLU::ProcessID CLU::PermanentExecute(const char* _cmd, const char* _workingDir /* = nullptr*/, OutputBuffer* _cmdOutputBuf /*= nullptr*/, ProcessPriority _prio /*= NORMAL*/)
 {
 	std::string cmd;
 	SetShellCmd( &cmd, _cmd );
@@ -117,7 +117,7 @@ CLU::ProcessID CLU::PermanentExecute(const char* _cmd, const char* _workingDir /
 	PROCESS_INFORMATION* pinfo = new PROCESS_INFORMATION;
 	s_processList.insert(pinfo);
 
-	if ( Execute( cmd.c_str(), _workingDir, pinfo, nullptr ) ) // !!!!!!!!!!!!!
+	if ( Execute( cmd.c_str(), _workingDir, pinfo, _cmdOutputBuf ) )
 	{
 		SetProcessPriority( pinfo->hProcess, _prio );
 		return pinfo;
