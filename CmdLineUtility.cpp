@@ -3,7 +3,6 @@
 
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
-#include <shellapi.h>
 
 static std::set<CLU::ProcessID> s_processList;
 
