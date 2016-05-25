@@ -15,6 +15,7 @@ namespace CLU
 	};
 
 	// Buffer used to retrieve one command's console output
+	// Is to be used directly with asynchronous command executions
 	class OutputBuffer final
 	{
 	public:
