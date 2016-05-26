@@ -48,17 +48,21 @@ namespace CLU
 		OutputBuffer& operator=(const OutputBuffer&) { return *this; }
 	};
 
+	// IMPORTANT
+	// If you pass a buffer and choose to display a command window (_showWindow == true), nothing will be printed on it.
+	// The reason is that its whole content is sucked up by the buffer.
+
 	// Executes cmd in a dos shell and quits WHEN the shell has been launched
 	// Returns true on successful shell start
 	// When _workingDir is null, the working directory is 
-	bool ASyncExecute(const char* _cmd, const char* _workingDir = nullptr, OutputBuffer* _cmdOutputBuf = nullptr, ProcessPriority _prio = NORMAL);
+	bool ASyncExecute(const char* _cmd, const char* _workingDir = nullptr, OutputBuffer* _cmdOutputBuf = nullptr, bool _showWindow = false, ProcessPriority _prio = NORMAL);
 
 	// Same as Execute but termination is user managed
-	ProcessID PermanentExecute(const char* _cmd, const char* _workingDir = nullptr, OutputBuffer* _cmdOutputBuf = nullptr, ProcessPriority _prio = NORMAL);
+	ProcessID PermanentExecute(const char* _cmd, const char* _workingDir = nullptr, OutputBuffer* _cmdOutputBuf = nullptr, bool _showWindow = false, ProcessPriority _prio = NORMAL);
 
 	// Executes cmd in a dos shell then waits until termination
 	// Returns true on successful command line execution.
-	bool SyncExecute(const char* _cmd, const char* _workingDir = nullptr, std::string* _cmdOutputBuf = nullptr, ProcessPriority _prio = NORMAL);
+	bool SyncExecute(const char* _cmd, const char* _workingDir = nullptr, std::string* _cmdOutputBuf = nullptr, bool _showWindow = false, ProcessPriority _prio = NORMAL);
 
 	// Terminates a process started with PermanentExecute.
 	// Returns false in case an error occurred or the process wasn't launched
@@ -68,4 +72,11 @@ namespace CLU
 	// Returns the last error code. If _message is not null,
 	// an error message will be copied to _message.
 	unsigned int GetLastError(char* _message, size_t _size);
+
+	// Pass your complex command (with &, |, && operators or whatever trick you need to use) and this 
+	// function will do the necessary to enable you to run it using any Execute command above.
+	//
+	// Warning: Any cmd constructed with this function will return an empty _cmdOutputBuf when
+	// run from an Execute function.
+	void FormatComplexCommand(std::string& _cmd);
 }

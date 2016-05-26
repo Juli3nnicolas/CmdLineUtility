@@ -34,12 +34,7 @@ static void SetProcessPriority(HANDLE _process, CLU::ProcessPriority _priority)
 	}
 }
 
-static void SetShellCmd(std::string* _resultCmd, const char* _cmd)
-{
-	*_resultCmd = "cmd /S /C "; *_resultCmd += "\""; *_resultCmd += _cmd; *_resultCmd += "\"";
-}
-
-static bool Execute(const char* _cmd, const char* _workingDir, PROCESS_INFORMATION* _outInfo, CLU::OutputBuffer* _cmdOutputBuf)
+static bool Execute(const char* _cmd, const char* _workingDir, PROCESS_INFORMATION* _outInfo, CLU::OutputBuffer* _cmdOutputBuf, bool _showWindow)
 {
 	// Get the process' info (useful in case it is to be launched asynchronously)
 	if ( _outInfo == nullptr )
@@ -49,9 +44,18 @@ static bool Execute(const char* _cmd, const char* _workingDir, PROCESS_INFORMATI
 	STARTUPINFOA sinfo;
 	ZeroMemory(&sinfo, sizeof(STARTUPINFOA));
 	sinfo.cb = sizeof(STARTUPINFOA);
-	sinfo.dwFlags = STARTF_USESTDHANDLES;
-	sinfo.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
-	sinfo.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
+	sinfo.dwFlags = STARTF_USESHOWWINDOW;
+	sinfo.wShowWindow = ( _showWindow ) ? SW_SHOWNORMAL : SW_HIDE;
+	BOOL inherit_parent_streams = FALSE;
+
+	if ( _cmdOutputBuf != nullptr )
+	{
+		// Inherit process' std streams
+		sinfo.dwFlags   |= STARTF_USESTDHANDLES;
+		sinfo.hStdInput  = GetStdHandle(STD_INPUT_HANDLE);
+		sinfo.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
+		inherit_parent_streams = TRUE;
+	}
 
 	// Get a pipe from which we read output from the launched app
 	HANDLE readfh;
@@ -75,7 +79,7 @@ static bool Execute(const char* _cmd, const char* _workingDir, PROCESS_INFORMATI
 	}
 
 	// Launch the app. We should return immediately (while the app is running)
-	if (!CreateProcessA(0, const_cast<char*>(_cmd), 0, 0, TRUE, 0, 0, _workingDir, &sinfo, _outInfo))
+	if (!CreateProcessA(0, const_cast<char*>(_cmd), 0, 0, inherit_parent_streams, 0, 0, _workingDir, &sinfo, _outInfo))
 	{
 		if ( _cmdOutputBuf != nullptr )
 		{
@@ -93,13 +97,10 @@ static bool Execute(const char* _cmd, const char* _workingDir, PROCESS_INFORMATI
 	return true;
 }
 
-bool CLU::ASyncExecute(const char* _cmd, const char* _workingDir /*= nullptr*/, CLU::OutputBuffer* _cmdOutputBuf /*= nullptr*/, ProcessPriority _prio /*= NORMAL*/)
-{
-	std::string cmd;
-	SetShellCmd( &cmd, _cmd );
-	
+bool CLU::ASyncExecute(const char* _cmd, const char* _workingDir /*= nullptr*/, CLU::OutputBuffer* _cmdOutputBuf /*= nullptr*/, bool _showWindow /*= false*/, ProcessPriority _prio /*= NORMAL*/)
+{	
 	PROCESS_INFORMATION pinfo;
-	if ( Execute( cmd.c_str(), _workingDir, &pinfo, _cmdOutputBuf ) )
+	if ( Execute( _cmd, _workingDir, &pinfo, _cmdOutputBuf, _showWindow ) )
 	{
 		SetProcessPriority( pinfo.hProcess, _prio );
 		return true;
@@ -108,15 +109,12 @@ bool CLU::ASyncExecute(const char* _cmd, const char* _workingDir /*= nullptr*/, 
 	return false;
 }
 
-CLU::ProcessID CLU::PermanentExecute(const char* _cmd, const char* _workingDir /* = nullptr*/, OutputBuffer* _cmdOutputBuf /*= nullptr*/, ProcessPriority _prio /*= NORMAL*/)
+CLU::ProcessID CLU::PermanentExecute(const char* _cmd, const char* _workingDir /* = nullptr*/, OutputBuffer* _cmdOutputBuf /*= nullptr*/, bool _showWindow /*= false*/, ProcessPriority _prio /*= NORMAL*/)
 {
-	std::string cmd;
-	SetShellCmd( &cmd, _cmd );
-
 	PROCESS_INFORMATION* pinfo = new PROCESS_INFORMATION;
 	s_processList.insert(pinfo);
 
-	if ( Execute( cmd.c_str(), _workingDir, pinfo, _cmdOutputBuf ) )
+	if ( Execute( _cmd, _workingDir, pinfo, _cmdOutputBuf, _showWindow ) )
 	{
 		SetProcessPriority( pinfo->hProcess, _prio );
 		return pinfo;
@@ -125,16 +123,13 @@ CLU::ProcessID CLU::PermanentExecute(const char* _cmd, const char* _workingDir /
 	return nullptr;
 }
 
-bool CLU::SyncExecute(const char* _cmd, const char* _workingDir /*= nullptr*/, std::string* _cmdOutputBuf /*= nullptr*/, ProcessPriority _prio /*= NORMAL*/)
+bool CLU::SyncExecute(const char* _cmd, const char* _workingDir /*= nullptr*/, std::string* _cmdOutputBuf /*= nullptr*/, bool _showWindow /*= false*/, ProcessPriority _prio /*= NORMAL*/)
 {
 	bool status = false;
-	
-	std::string cmd;
-	SetShellCmd( &cmd, _cmd );
 
 	OutputBuffer buffer; // Must remain until the command line output has fully been read
 	PROCESS_INFORMATION pinfo;
-	status = Execute( cmd.c_str(), _workingDir, &pinfo, (_cmdOutputBuf != nullptr) ? &buffer : nullptr );
+	status = Execute( _cmd, _workingDir, &pinfo, (_cmdOutputBuf != nullptr) ? &buffer : nullptr, _showWindow );
 	if ( status )
 	{
 		SetProcessPriority( pinfo.hProcess, _prio );
@@ -191,6 +186,13 @@ unsigned int CLU::GetLastError(char* _message, size_t _size)
 	}
 
 	return error;
+}
+
+void CLU::FormatComplexCommand(std::string& _cmd)
+{
+	std::string body = "cmd /S /C \"";
+	_cmd.insert(0, body);
+	_cmd += "\"";
 }
 
 bool CLU::OutputBuffer::ReleaseResources()
