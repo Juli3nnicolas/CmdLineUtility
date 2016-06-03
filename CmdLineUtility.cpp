@@ -188,7 +188,7 @@ unsigned int CLU::GetLastError(char* _message, size_t _size)
 	return error;
 }
 
-void CLU::FormatComplexCommand(std::string& _cmd)
+void CLU::FormatCmd(std::string& _cmd)
 {
 	std::string body = "cmd /S /C \"";
 	_cmd.insert(0, body);
